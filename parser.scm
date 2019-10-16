@@ -133,7 +133,7 @@
             ((&) (apply re:& (map (derive x) sub)))
             ((*) (re:. ((derive x) sub) R))
             ((-) (re:- ((derive x) sub)))
-            (else (error 'derive "todo/fixme" R x tag sub)))))))
+            (else (error 'derive "fixme" R x tag sub)))))))
 
 (define (D s r)
   (fold-left (lambda (r* x)
@@ -144,16 +144,35 @@
 (define (re:match s r)
   (nullify (D s r)))
 
+(define (re:1+ r)
+  (re:. r (re:* r)))
+
 (define lang-cadr
   (re:. #\c
-        (re:* (re:+ #\a #\d))
+        (re:1+ (re:+ #\a #\d))
         #\r))
 
-(define lang-loop
-  (re:*
-   (re:+ (re:string "for")
-         (re:string "while")
-         (re:string "do"))))
-
-(define ab*
+(define lang-ab*
   (re:. #\a (re:* #\b)))
+
+(define lang-ab*+c*ad
+  (re:+ lang-ab*
+        (re:. (re:* #\c)
+              #\a
+              #\d)))
+
+(define lower-ascii
+  (string->charset "abcdefghijklmnopqrstuvwxyz"))
+
+(define lang-word
+  (re:1+ lower-ascii))
+
+;; one of next steps is to make dfa
+;; [a-z]*&!(()|do|for|if|while)
+
+(define lang-loop
+  (re:* (re:+ (re:string "for")
+              (re:string "while")
+              (re:string "if")
+              (re:string "do")
+              (re:. lang-word #\.))))
