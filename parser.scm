@@ -117,7 +117,7 @@
          (get-datum R))
         ((re:null? R) re:empty)
         ((re:empty? R) re:null)
-        (else (tag '- re))))
+        (else (tag '- R))))
 
 (define (re:string R)
   (apply re:. (string->list R)))
@@ -238,6 +238,9 @@
 (define lang-word
   (re:1+ lower-ascii))
 
+(define lang-digit
+  (string->charset "0123456789"))
+
 (define lang-number
   (re:1+ lang-digit))
 
@@ -252,12 +255,11 @@
         (re:* (re:. #\+ lang-number))))
 
 (define lang-arith
-  (let ((int (re:1+ (string->charset "0123456789")))
-        (op (re:. (re:* lang-whitespace)
+  (let ((op (re:. (re:* lang-whitespace)
                   (string->charset "+*-/^%")
                   (re:* lang-whitespace))))
-    (re:. int
-          (re:* (re:. op int)))))
+    (re:. lang-float
+          (re:* (re:. op lang-float)))))
 
 (define lang-loop
   (re:* (re:+ (re:string "for")
@@ -265,3 +267,9 @@
               (re:string "if")
               (re:string "do")
               (re:. lang-word #\.))))
+
+(define lang-float
+  (re:. (re:? (re:+ #\+ #\-))
+        (re:+ (re:1+ (re:& lang-digit (re:- #\0)))
+              #\0)
+        (re:? (re:. #\. (re:1+ lang-digit)))))
