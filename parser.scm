@@ -48,6 +48,40 @@
       (char? R)
       (charset? R)))
 
+(define rien
+  re:null)
+
+(define tout
+  (tag '* (tag '- rien)))
+
+(define (no-good? R)
+  (eq? R rien))
+
+(define (re:everything? R)
+  (equal? R tout))
+
+(define (organize rs)
+  (let ((table (make-hashtable equal-hash equal?)))
+    (for-each (lambda (r)
+                (hashtable-set! table r #t))
+              rs)
+    (vector->list
+     (hashtable-keys table))))
+
+;; nub and flatten based on tag
+(define (flatten-like tag)
+  (lambda (rs)
+    (if (not (list? rs))
+        (list rs)
+        (fold-right (lambda (r xs)
+                      (if (and (pair? r)
+                               (eq? (get-tag r) tag))
+                          (append ((flatten-like tag) (get-datum r))
+                                  xs)
+                          (cons r xs)))
+                    '()
+                    (organize rs)))))
+
 (define (re:. . rs)
   (let ((rs (filter re:non-empty? rs)))
     (let ((nulls (filter re:null? rs)))
@@ -57,23 +91,42 @@
             (else (tag 'seq rs))))))
 
 (define (re:& . rs)
-  (let ((nulls (filter re:null? rs)))
-    (cond ((not (null? nulls)) re:null)
-          ((null? rs) re:empty)
-          ((= 1 (length rs)) (car rs))
-          (else (tag '& rs)))))
+  (let ((rs ((flatten-like '&) rs)))
+    (let ((nulls (filter re:null? rs)))
+      (cond ((not (null? nulls)) re:null)
+            ((null? rs) re:empty)
+            ((= 1 (length rs)) (car rs))
+            (else (tag '& rs))))))
 
 (define (re:+ . rs)
-  (let ((rs (filter re:non-null? rs)))
-    (cond ((null? rs) re:null)
-          ((= 1 (length rs)) (car rs))
-          (else (tag '+ rs)))))
+  (let ((rs ((flatten-like '+) rs)))
+    (if (memp re:everything? rs)
+        tout
+        (let ((rs (filter re:non-null? rs)))
+          (cond ((null? rs) re:null)
+                ((= 1 (length rs)) (car rs))
+                (else (tag '+ rs)))))))
 
 (define (re:* R)
-  (tag '* R))
+  (cond ((re:atom? R) (tag '* R))
+        ((eq? (get-tag R) '*) R)
+        (else (tag '* R))))
+
+(define (re:- R)
+  (cond ((and (pair? R) (eq? '- (get-tag R)))
+         (get-datum R))
+        ((re:null? R) re:empty)
+        ((re:empty? R) re:null)
+        (else (tag '- re))))
 
 (define (re:string R)
   (apply re:. (string->list R)))
+
+(define (re:1+ r)
+  (re:. r (re:* r)))
+
+(define (re:? r)
+  (re:+ re:empty r))
 
 (define (<&> x y)
   (if (re:null? x)
@@ -84,11 +137,6 @@
   (if (re:empty? x)
       x
       y))
-
-(define (<-> x)
-  (if (re:empty? x)
-      re:null
-      re:empty))
 
 (define (nullify R)
   (if (re:atom? R)
@@ -105,7 +153,7 @@
           ((seq) (fold-left <&> re:empty (map nullify sub)))
           ((&) (fold-left <&> (nullify (car sub)) (map nullify (cdr sub))))
           ((+) (fold-left <+> (nullify (car sub)) (map nullify (cdr sub))))
-          ((-) (<-> (nullify sub)))))))
+          ((-) (re:- (nullify sub)))))))
 
 (define (derive-atom x R)
   (cond ((char? R)
@@ -131,9 +179,19 @@
                          ((derive x) (apply re:. (cdr sub))))))
             ((+) (apply re:+ (map (derive x) sub)))
             ((&) (apply re:& (map (derive x) sub)))
-            ((*) (re:. ((derive x) sub) R))
+            ((*) (re:. ((derive x) sub)
+                       R))
             ((-) (re:- ((derive x) sub)))
             (else (error 'derive "fixme" R x tag sub)))))))
+
+(define (memo-derive)
+  (let ((table (make-hashtable equal-hash equal?)))
+    (lambda (x R)
+      (let ((previously? (hashtable-ref table (cons x R) #f)))
+        (or previously?
+            (let ((result ((derive x) R)))
+              (hashtable-set! table (cons x R) result)
+              result))))))
 
 (define (D s r)
   (fold-left (lambda (r* x)
@@ -141,11 +199,24 @@
              r
              (string->list s)))
 
-(define (re:match s r)
+(define (simple-match s r)
   (nullify (D s r)))
 
-(define (re:1+ r)
-  (re:. r (re:* r)))
+(define memo-match
+  (let ((D* (memo-derive)))
+    (lambda (s r)
+      (nullify (fold-left (lambda (r x)
+                            (D* x r))
+                          r
+                          (string->list s))))))
+
+(define (make-memoized-matcher)
+  (let ((D* (memo-derive)))
+    (lambda (s r)
+      (nullify (fold-left (lambda (r x)
+                            (D* x r))
+                          r
+                          (string->list s))))))
 
 (define lang-cadr
   (re:. #\c
@@ -167,8 +238,26 @@
 (define lang-word
   (re:1+ lower-ascii))
 
-;; one of next steps is to make dfa
-;; [a-z]*&!(()|do|for|if|while)
+(define lang-number
+  (re:1+ lang-digit))
+
+(define lang-whitespace
+  (list->charset '(#\tab #\space #\newline)))
+
+(define lang-1+1
+  (re:. #\1 (re:* (re:. #\+ #\1))))
+
+(define lang-n+n
+  (re:. lang-number
+        (re:* (re:. #\+ lang-number))))
+
+(define lang-arith
+  (let ((int (re:1+ (string->charset "0123456789")))
+        (op (re:. (re:* lang-whitespace)
+                  (string->charset "+*-/^%")
+                  (re:* lang-whitespace))))
+    (re:. int
+          (re:* (re:. op int)))))
 
 (define lang-loop
   (re:* (re:+ (re:string "for")
