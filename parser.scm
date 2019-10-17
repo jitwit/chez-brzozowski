@@ -218,6 +218,33 @@
                           r
                           (string->list s))))))
 
+;; return the first accepting index in S starting from j
+(define (make-index-matcher L)
+  (let ((D* (memo-derive)))
+    (lambda (j S)
+      (let ((n (string-length S))
+            (end #f)
+            (lang L))
+        (do ((j j (1+ j)))
+            ((or (= j n) end (no-good? lang)) end)
+          (set! lang (D* (string-ref S j) lang))
+          (when (re:empty? (nullify lang))
+            (set! end (1+ j))))))))
+
+(define (find-matches lang S)
+  (let ((matcher (make-index-matcher lang))
+        (n (string-length S)))
+    (let loop ((a 0) (matches '()))
+      (if (= a n)
+          matches
+          (let ((b (matcher a S)))
+            (if (not b)
+                (loop (1+ a) matches)
+                (loop b (cons (cons a b) matches))))))))
+
+(define (count-matches lang S)
+  (length (find-matches lang S)))
+
 (define lang-cadr
   (re:. #\c
         (re:1+ (re:+ #\a #\d))
@@ -234,6 +261,9 @@
 
 (define lower-ascii
   (string->charset "abcdefghijklmnopqrstuvwxyz"))
+
+(define lang-ascii-letter
+  (string->charset "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"))
 
 (define lang-word
   (re:1+ lower-ascii))
@@ -273,3 +303,8 @@
         (re:+ (re:1+ (re:& lang-digit (re:- #\0)))
               #\0)
         (re:? (re:. #\. (re:1+ lang-digit)))))
+
+(define (show-matches lang S)
+  (map (lambda (m)
+         (substring S (car m) (cdr m)))
+       (find-matches lang S)))
