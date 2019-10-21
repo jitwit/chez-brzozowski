@@ -219,25 +219,42 @@
                           (string->list s))))))
 
 ;; return the first accepting index in S starting from j
-(define (make-index-matcher L)
+(define (make-index-matcher)
   (let ((D* (memo-derive)))
-    (lambda (j S)
+    (lambda (j S L)
       (let ((n (string-length S))
-            (end #f)
-            (lang L))
-        (do ((j j (1+ j)))
-            ((or (= j n) end (no-good? lang)) end)
-          (set! lang (D* (string-ref S j) lang))
-          (when (re:empty? (nullify lang))
-            (set! end (1+ j))))))))
+            (end #f))
+        (do ((j j (1+ j))
+             (L L (D* (string-ref S j) L)))
+            ((or (= j n) (no-good? L)) end)
+          (when (re:empty? (nullify L))
+            (set! end j)))))))
+
+(define (make-matcher)
+  (let ((matcher (make-index-matcher)))
+    (lambda (S lang . extra)
+      (let ((n (string-length S)))
+        (let loop ((a 0) (matches '()))
+          (if (= a n)
+              (begin
+                (when (pair? extra)
+                  (for-each (lambda (m)
+                              (format #t "~a~%"
+                                      (substring S (car m) (cdr m))))
+                            (reverse matches)))
+                matches)
+              (let ((b (matcher a S lang)))
+                (if (not b)
+                    (loop (1+ a) matches)
+                    (loop b (cons (cons a b) matches))))))))))
 
 (define (find-matches lang S)
-  (let ((matcher (make-index-matcher lang))
+  (let ((matcher (make-index-matcher))
         (n (string-length S)))
     (let loop ((a 0) (matches '()))
       (if (= a n)
           matches
-          (let ((b (matcher a S)))
+          (let ((b (matcher a S lang)))
             (if (not b)
                 (loop (1+ a) matches)
                 (loop b (cons (cons a b) matches))))))))
@@ -284,6 +301,12 @@
   (re:. lang-number
         (re:* (re:. #\+ lang-number))))
 
+(define lang-float
+  (re:. (re:? (re:+ #\+ #\-))
+        (re:+ (re:1+ (re:& lang-digit (re:- #\0)))
+              #\0)
+        (re:? (re:. #\. (re:1+ lang-digit)))))
+
 (define lang-arith
   (let ((op (re:. (re:* lang-whitespace)
                   (string->charset "+*-/^%")
@@ -298,13 +321,9 @@
               (re:string "do")
               (re:. lang-word #\.))))
 
-(define lang-float
-  (re:. (re:? (re:+ #\+ #\-))
-        (re:+ (re:1+ (re:& lang-digit (re:- #\0)))
-              #\0)
-        (re:? (re:. #\. (re:1+ lang-digit)))))
-
 (define (show-matches lang S)
   (map (lambda (m)
          (substring S (car m) (cdr m)))
        (find-matches lang S)))
+
+
