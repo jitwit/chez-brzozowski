@@ -142,32 +142,6 @@
                       '()
                       (organize rs)))))
 
-  (define (organize:& rs)
-    (let-values (((char-regexps other-regexps) (partition re:char-like? rs)))
-      (cond ((memp re:null? other-regexps) rien)
-            ((null? char-regexps) other-regexps)
-            (else (cons (fold-left (lambda (x y) ;;; if empty, propagate through
-                                     (if (char? y)
-                                         (if (charset-member? y x)
-                                             (charset-insert y empty-set)
-                                             empty-set)
-                                         (charset-intersection x y)))
-                                   (car char-regexps)
-                                   (cdr char-regexps))
-                        other-regexps)))))
-
-  (define (organize:+ rs)
-    (let-values (((char-regexps other-regexps) (partition re:char-like? rs)))
-      (cond ((memp re:everything? other-regexps) tout)
-            ((null? char-regexps) other-regexps)
-            (else (cons (fold-left (lambda (x y)
-                                     (if (char? y)
-                                         (charset-insert y x)
-                                         (charset-union x y)))
-                                   (car char-regexps)
-                                   (cdr char-regexps))
-                        other-regexps)))))
-
 ;;; sequence/concatenated subexpressions
   (define (re:. . rs)
     (let ((rs (filter re:non-empty? rs)))
@@ -185,15 +159,6 @@
               ((null? rs) re:empty)
               ((= 1 (length rs)) (car rs))
               (else (tag '& rs))))))
-  ;; table for now
-  ;;  (define (re:& . rs)
-  ;;    (let ((rs (organize:& rs)))
-  ;;      (if (re:null? rs)
-  ;;          re:null
-  ;;          (let ((rs ((flatten-like '&) rs)))
-  ;;            (cond ((null? rs) re:empty)
-  ;;                  ((null? (cdr rs)) (car rs))
-  ;;                  (else (tag '& rs)))))))
 
 ;;; disjunction of subexpressions
   (define (re:+ . rs)
@@ -204,14 +169,6 @@
             (cond ((null? rs) re:null)
                   ((= 1 (length rs)) (car rs))
                   (else (tag '+ rs)))))))
-  ;;  (define (re:+ . rs)
-  ;;    (let ((rs (organize:+ rs)))
-  ;;      (if (memp re:everything? rs)
-  ;;          tout
-  ;;          (let ((rs ((flatten-like '+) rs)))
-  ;;            (cond ((null? rs) re:null)
-  ;;                  ((= 1 (length rs)) (car rs))
-  ;;                  (else (tag '+ rs)))))))
 
 ;;; kleene star of regexp
   (define (re:* R)
@@ -225,6 +182,7 @@
            (get-tagged-datum R))
           ((re:null? R) re:empty)
           ((re:empty? R) re:null)
+          ((re:set? R) (charset-complement R))
           (else (tag '- R))))
 
 ;;; string as sequence of chars
@@ -282,6 +240,7 @@
                re:null))
           (else re:null)))
 
+  ;;; dR/dx
   (define (derive x)
     (lambda (R)
       (if (re:atom? R)
