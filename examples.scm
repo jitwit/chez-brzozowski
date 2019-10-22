@@ -1,4 +1,16 @@
-(load "parser.scm")
+(print-gensym #f)
+
+(define libraries-loaded #f)
+
+(unless libraries-loaded
+  (set! libraries-loaded #t)
+  (library-directories (cons* "../chez-charset"
+                              "."
+                              (library-directories))))
+
+(import (charset)
+        (brzozowski))
+
 
 (define lang-cadr
   (re:. #\c
@@ -15,10 +27,10 @@
               #\d)))
 
 (define lower-ascii
-  (string->charset "abcdefghijklmnopqrstuvwxyz"))
+  (re:charset "abcdefghijklmnopqrstuvwxyz"))
 
 (define lang-ascii-letter
-  (string->charset "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"))
+  (re:charset "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"))
 
 (define lang-word
   (re:1+ lower-ascii))
@@ -59,3 +71,11 @@
               (re:string "do")
               (re:. lang-word #\.))))
 
+(define lang-pathological-regexp-1
+  (re:. (re:1+ (re:+ #\a
+                     (re:string "aa")))
+        #\b))
+
+(define lang-pathological-regexp-2
+  (re:+ (re:* (re:* #\a))
+        (re:* #\b)))
