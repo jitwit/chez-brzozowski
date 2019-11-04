@@ -301,7 +301,8 @@
               (end #f))
           (do ((j j (1+ j))
                (L L (D* (string-ref S j) L)))
-              ((or (= j n) (no-good? L)) end)
+              ((or (= j n) (no-good? L))
+               (if (re:empty? (nullify L)) j end))
             (when (re:empty? (nullify L))
               (set! end j)))))))
 
@@ -328,7 +329,7 @@
           (n (string-length S)))
       (let loop ((a 0) (matches '()))
         (if (= a n)
-            matches
+            (reverse matches)
             (let ((b (matcher a S lang)))
               (if (not b)
                   (loop (1+ a) matches)
